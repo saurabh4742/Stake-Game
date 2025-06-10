@@ -6,9 +6,9 @@ import { prisma } from "@/lib/prisma";
 export async function POST(request: NextRequest) {
   try {
     // Check environment variables
-    // if (!process.env.NEXT_PUBLIC_APP_URL) {
-    //   throw new Error("NEXT_PUBLIC_APP_URL is not configured");
-    // }
+    if (!process.env.NEXT_PUBLIC_APP_URL) {
+      throw new Error("NEXT_PUBLIC_APP_URL is not configured");
+    }
 
     const { userId } = auth();
     
@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
         },
       ],
       mode: 'payment',
-      success_url: `/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `/deposit`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/deposit`,
       metadata: {
         userId: user.id,
         amount: amount.toString(),
