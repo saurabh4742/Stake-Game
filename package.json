@@ -79,6 +79,6 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/socket.io-client": "^4.7.4"
+    "@types/socket.io-client": "^3.0.0"
   }
 }
