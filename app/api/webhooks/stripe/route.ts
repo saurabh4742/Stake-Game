@@ -33,8 +33,10 @@ export async function POST(request: NextRequest) {
     let event;
 
     try {
+      // Ensure we're using the raw body exactly as received
+      const rawBody = Buffer.from(body);
       event = stripe.webhooks.constructEvent(
-        body,
+        rawBody,
         signature,
         process.env.STRIPE_WEBHOOK_SECRET
       );
@@ -47,7 +49,8 @@ export async function POST(request: NextRequest) {
           details: {
             signatureLength: signature?.length,
             bodyLength: body.length,
-            secretLength: process.env.STRIPE_WEBHOOK_SECRET?.length
+            secretLength: process.env.STRIPE_WEBHOOK_SECRET?.length,
+            bodyPreview: body.substring(0, 200)
           }
         },
         { status: 400 }
