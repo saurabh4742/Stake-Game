@@ -32,7 +32,9 @@ export async function POST(request: NextRequest) {
     const gameSession = await prisma.gameSession.findFirst({
       where: { 
         userId: user.id,
-        cashoutAt: null, // Not cashed out yet
+        cashoutAt: null,
+        crashed: false,
+        gameType: 'aviator'
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -42,13 +44,22 @@ export async function POST(request: NextRequest) {
       
       // Check if there are any game sessions at all
       const allSessions = await prisma.gameSession.findMany({
-        where: { userId: user.id },
+        where: { 
+          userId: user.id,
+          gameType: 'aviator'
+        },
         orderBy: { createdAt: 'desc' },
         take: 1,
       });
       
       if (allSessions.length > 0) {
-        console.log("ℹ️ Found existing game session but it may be already cashed out:", allSessions[0]);
+        const session = allSessions[0];
+        console.log("ℹ️ Found existing game session:", {
+          id: session.id,
+          cashoutAt: session.cashoutAt,
+          crashed: session.crashed,
+          createdAt: session.createdAt
+        });
       } else {
         console.log("ℹ️ No game sessions found at all for user:", user.id);
       }
@@ -56,13 +67,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No active game session found" }, { status: 404 });
     }
 
-    console.log("✅ Found active game session:", gameSession.id);
+    console.log("✅ Found active game session:", {
+      id: gameSession.id,
+      betAmount: gameSession.betAmount,
+      createdAt: gameSession.createdAt
+    });
 
     const winAmount = gameSession.betAmount * multiplier;
 
     // Update game session and user balance
     try {
       await prisma.$transaction(async (tx) => {
+        // First verify the session is still active
+        const currentSession = await tx.gameSession.findUnique({
+          where: { id: gameSession.id }
+        });
+
+        if (!currentSession || currentSession.cashoutAt !== null || currentSession.crashed) {
+          console.log("❌ Game session is no longer active:", {
+            id: gameSession.id,
+            cashoutAt: currentSession?.cashoutAt,
+            crashed: currentSession?.crashed
+          });
+          throw new Error("Game session is no longer active");
+        }
+
         await tx.gameSession.update({
           where: { id: gameSession.id },
           data: {
