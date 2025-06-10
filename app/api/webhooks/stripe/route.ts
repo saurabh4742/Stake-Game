@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
+import Stripe from "stripe";
 
 // Force dynamic route handling
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,11 @@ export async function POST(request: NextRequest) {
     // Get the raw body as text
     const body = await request.text();
     const signature = headers().get("stripe-signature");
+
+    console.log("📝 Webhook received:");
+    console.log("Signature:", signature);
+    console.log("Body length:", body.length);
+    console.log("Body preview:", body.substring(0, 100) + "...");
 
     if (!signature) {
       console.error("❌ No Stripe signature found in request headers");
@@ -22,6 +28,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
     }
 
+    console.log("🔑 Using webhook secret:", process.env.STRIPE_WEBHOOK_SECRET.substring(0, 5) + "...");
+
     let event;
 
     try {
@@ -32,53 +40,58 @@ export async function POST(request: NextRequest) {
       );
     } catch (err: any) {
       console.error("❌ Webhook signature verification failed:", err.message);
+      console.error("Error details:", err);
       return NextResponse.json(
-        { error: `Webhook signature verification failed: ${err.message}` },
+        { 
+          error: `Webhook signature verification failed: ${err.message}`,
+          details: {
+            signatureLength: signature?.length,
+            bodyLength: body.length,
+            secretLength: process.env.STRIPE_WEBHOOK_SECRET?.length
+          }
+        },
         { status: 400 }
       );
     }
 
     console.log("✅ Stripe Event Type:", event.type);
 
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object as any;
+    // Handle charge.succeeded event
+    if (event.type === "charge.succeeded") {
+      const charge = event.data.object as Stripe.Charge;
+      console.log("💳 Processing charge:", charge.id);
+      
+      // Find the associated transaction
+      const transaction = await prisma.transaction.findFirst({
+        where: {
+          stripeId: typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id,
+          status: "PENDING"
+        }
+      });
 
-      const userId = session.metadata.userId;
-      const amount = parseFloat(session.metadata.amount);
-
-      console.log("📝 Processing payment for user:", userId, "amount:", amount);
-
-      if (!userId || !amount) {
-        console.error("❌ Missing userId or amount in session metadata");
+      if (!transaction) {
+        console.error("❌ No pending transaction found for charge:", charge.id);
         return NextResponse.json(
-          { error: "Missing required metadata" },
+          { error: "No pending transaction found" },
           { status: 400 }
         );
       }
 
       try {
         await prisma.$transaction(async (tx) => {
-          const result = await tx.transaction.updateMany({
-            where: {
-              stripeId: session.id,
-              status: "PENDING",
-            },
-            data: {
-              status: "COMPLETED",
-            },
+          // Update transaction status
+          await tx.transaction.update({
+            where: { id: transaction.id },
+            data: { status: "COMPLETED" }
           });
 
-          if (result.count === 0) {
-            console.error("❌ No pending transaction found for session:", session.id);
-            throw new Error("No pending transaction found");
-          }
-
+          // Update user balance
           await tx.user.update({
-            where: { id: userId },
-            data: { balance: { increment: amount } },
+            where: { id: transaction.userId },
+            data: { balance: { increment: transaction.amount } }
           });
 
-          console.log(`✅ Updated ${result.count} transaction(s) for user ${userId}`);
+          console.log(`✅ Updated transaction ${transaction.id} for user ${transaction.userId}`);
         });
       } catch (txError) {
         console.error("❌ Transaction error:", txError);
