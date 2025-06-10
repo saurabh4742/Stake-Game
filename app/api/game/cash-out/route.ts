@@ -28,7 +28,31 @@ export async function POST(request: NextRequest) {
 
     console.log("🔍 Looking for active game session for user:", user.id);
 
-    // Find the most recent game session for this user
+    // First, let's check all conditions separately
+    const sessions = await prisma.gameSession.findMany({
+      where: { 
+        userId: user.id,
+        gameType: 'aviator'
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    console.log("📊 Found", sessions.length, "total sessions for user");
+    
+    if (sessions.length > 0) {
+      const latestSession = sessions[0];
+      console.log("🔍 Latest session details:", {
+        id: latestSession.id,
+        userId: latestSession.userId,
+        betAmount: latestSession.betAmount,
+        cashoutAt: latestSession.cashoutAt,
+        crashed: latestSession.crashed,
+        gameType: latestSession.gameType,
+        createdAt: latestSession.createdAt
+      });
+    }
+
+    // Now find the active session with all conditions
     const gameSession = await prisma.gameSession.findFirst({
       where: { 
         userId: user.id,
@@ -58,7 +82,8 @@ export async function POST(request: NextRequest) {
           id: session.id,
           cashoutAt: session.cashoutAt,
           crashed: session.crashed,
-          createdAt: session.createdAt
+          createdAt: session.createdAt,
+          gameType: session.gameType
         });
       } else {
         console.log("ℹ️ No game sessions found at all for user:", user.id);
@@ -70,7 +95,8 @@ export async function POST(request: NextRequest) {
     console.log("✅ Found active game session:", {
       id: gameSession.id,
       betAmount: gameSession.betAmount,
-      createdAt: gameSession.createdAt
+      createdAt: gameSession.createdAt,
+      gameType: gameSession.gameType
     });
 
     const winAmount = gameSession.betAmount * multiplier;
@@ -87,7 +113,8 @@ export async function POST(request: NextRequest) {
           console.log("❌ Game session is no longer active:", {
             id: gameSession.id,
             cashoutAt: currentSession?.cashoutAt,
-            crashed: currentSession?.crashed
+            crashed: currentSession?.crashed,
+            gameType: currentSession?.gameType
           });
           throw new Error("Game session is no longer active");
         }
