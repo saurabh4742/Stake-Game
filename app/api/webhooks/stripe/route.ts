@@ -111,6 +111,116 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Handle payment_intent.succeeded event
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      console.log("💳 Payment succeeded:", paymentIntent.id);
+      
+      // Find the associated transaction
+      const transaction = await prisma.transaction.findFirst({
+        where: {
+          stripeId: paymentIntent.id,
+          status: { in: ["PENDING", "REQUIRES_ACTION"] }
+        }
+      });
+
+      if (!transaction) {
+        console.error("❌ No pending transaction found for payment intent:", paymentIntent.id);
+        return NextResponse.json(
+          { error: "No pending transaction found" },
+          { status: 400 }
+        );
+      }
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Update transaction status
+          const existingMetadata = transaction.metadata as TransactionMetadata || {};
+          const metadata: TransactionMetadata = {
+            ...existingMetadata,
+            completedAt: new Date().toISOString()
+          };
+
+          await tx.transaction.update({
+            where: { id: transaction.id },
+            data: { 
+              status: "COMPLETED",
+              metadata
+            }
+          });
+
+          // Update user balance
+          await tx.user.update({
+            where: { id: transaction.userId },
+            data: { balance: { increment: transaction.amount } }
+          });
+
+          console.log(`✅ Updated transaction ${transaction.id} for user ${transaction.userId}`);
+        });
+      } catch (txError) {
+        console.error("❌ Transaction error:", txError);
+        return NextResponse.json(
+          { error: "Failed to process transaction" },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Handle checkout.session.completed event
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      console.log("💳 Checkout completed:", session.id);
+      
+      // Find the associated transaction
+      const transaction = await prisma.transaction.findFirst({
+        where: {
+          stripeId: session.id,
+          status: "PENDING"
+        }
+      });
+
+      if (!transaction) {
+        console.error("❌ No pending transaction found for session:", session.id);
+        return NextResponse.json(
+          { error: "No pending transaction found" },
+          { status: 400 }
+        );
+      }
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Update transaction status
+          const existingMetadata = transaction.metadata as TransactionMetadata || {};
+          const metadata: TransactionMetadata = {
+            ...existingMetadata,
+            completedAt: new Date().toISOString()
+          };
+
+          await tx.transaction.update({
+            where: { id: transaction.id },
+            data: { 
+              status: "COMPLETED",
+              metadata
+            }
+          });
+
+          // Update user balance
+          await tx.user.update({
+            where: { id: transaction.userId },
+            data: { balance: { increment: transaction.amount } }
+          });
+
+          console.log(`✅ Updated transaction ${transaction.id} for user ${transaction.userId}`);
+        });
+      } catch (txError) {
+        console.error("❌ Transaction error:", txError);
+        return NextResponse.json(
+          { error: "Failed to process transaction" },
+          { status: 500 }
+        );
+      }
+    }
+
     // Handle charge.succeeded event
     if (event.type === "charge.succeeded") {
       const charge = event.data.object as Stripe.Charge;
