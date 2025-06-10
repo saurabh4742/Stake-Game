@@ -7,6 +7,13 @@ import Stripe from "stripe";
 // Force dynamic route handling
 export const dynamic = 'force-dynamic';
 
+type TransactionMetadata = {
+  requiresAction?: boolean;
+  clientSecret?: string;
+  completedAt?: string;
+  [key: string]: any;
+};
+
 export async function POST(request: NextRequest) {
   try {
     // Get the raw body as text
@@ -82,15 +89,16 @@ export async function POST(request: NextRequest) {
 
       // Update transaction status to indicate 3D Secure is required
       try {
+        const metadata: TransactionMetadata = {
+          requiresAction: true,
+          clientSecret: paymentIntent.client_secret || undefined
+        };
+
         await prisma.transaction.update({
           where: { id: transaction.id },
           data: { 
             status: "REQUIRES_ACTION",
-            metadata: {
-              ...transaction.metadata,
-              requiresAction: true,
-              clientSecret: paymentIntent.client_secret
-            }
+            metadata
           }
         });
         console.log(`✅ Updated transaction ${transaction.id} to requires_action`);
@@ -127,9 +135,18 @@ export async function POST(request: NextRequest) {
       try {
         await prisma.$transaction(async (tx) => {
           // Update transaction status
+          const existingMetadata = transaction.metadata as TransactionMetadata || {};
+          const metadata: TransactionMetadata = {
+            ...existingMetadata,
+            completedAt: new Date().toISOString()
+          };
+
           await tx.transaction.update({
             where: { id: transaction.id },
-            data: { status: "COMPLETED" }
+            data: { 
+              status: "COMPLETED",
+              metadata
+            }
           });
 
           // Update user balance
