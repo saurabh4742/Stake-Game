@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
+    // Check environment variables
+    if (!process.env.NEXT_PUBLIC_APP_URL) {
+      throw new Error("NEXT_PUBLIC_APP_URL is not configured");
+    }
+
     const { userId } = auth();
     
     if (!userId) {
@@ -71,6 +76,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Deposit error:", error);
+    if (error instanceof Error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

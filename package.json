@@ -3,19 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npx next dev",
-    "build": "npx next build",
-    "start": "npx next start",
-    "lint": "npx next lint",
-    "db:push": "npx prisma db push",
-    "db:studio": "npx prisma studio",
-    "db:generate": "npx prisma generate",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate",
     "socket:dev": "cd socket && npm run dev"
   },
   "dependencies": {
     "@clerk/nextjs": "^4.29.1",
     "@hookform/resolvers": "^3.9.0",
-    "@next/swc-wasm-nodejs": "14.2.25",
     "@prisma/client": "^5.7.1",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
@@ -53,7 +52,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
-    "eslint": "^8.56.0",
+    "eslint": "^8.57.1",
     "eslint-config-next": "14.2.25",
     "framer-motion": "^10.16.16",
     "input-otp": "^1.2.4",
@@ -79,6 +78,6 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/socket.io-client": "^3.0.0"
+    "rimraf": "^5.0.5"
   }
 }
