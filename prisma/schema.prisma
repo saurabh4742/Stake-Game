@@ -1,0 +1,89 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  clerkId   String   @unique
+  email     String   @unique
+  balance   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  gameSessions GameSession[]
+  minesGames   MinesGame[]
+
+  @@map("users")
+}
+
+model Transaction {
+  id        String          @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String          @db.ObjectId
+  amount    Float
+  type      TransactionType
+  status    TransactionStatus @default(PENDING)
+  stripeId  String?
+  createdAt DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+model GameSession {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  betAmount  Float
+  multiplier Float?
+  winAmount  Float?
+  crashed    Boolean  @default(false)
+  cashoutAt  Float?
+  gameType   String   @default("aviator")
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("game_sessions")
+}
+
+model MinesGame {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String   @db.ObjectId
+  betAmount     Float
+  tilesRevealed Int      @default(0)
+  multiplier    Float    @default(1.0)
+  winAmount     Float?
+  gameEnded     Boolean  @default(false)
+  hitMine       Boolean  @default(false)
+  minePositions Int[]    @default([])
+  revealedTiles Int[]    @default([])
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mines_games")
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  WIN
+  LOSS
+  BET
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
