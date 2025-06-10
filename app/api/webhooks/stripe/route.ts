@@ -59,6 +59,50 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Stripe Event Type:", event.type);
 
+    // Handle payment_intent.requires_action event
+    if (event.type === "payment_intent.requires_action") {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      console.log("💳 Payment requires action:", paymentIntent.id);
+      
+      // Find the associated transaction
+      const transaction = await prisma.transaction.findFirst({
+        where: {
+          stripeId: paymentIntent.id,
+          status: "PENDING"
+        }
+      });
+
+      if (!transaction) {
+        console.error("❌ No pending transaction found for payment intent:", paymentIntent.id);
+        return NextResponse.json(
+          { error: "No pending transaction found" },
+          { status: 400 }
+        );
+      }
+
+      // Update transaction status to indicate 3D Secure is required
+      try {
+        await prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { 
+            status: "REQUIRES_ACTION",
+            metadata: {
+              ...transaction.metadata,
+              requiresAction: true,
+              clientSecret: paymentIntent.client_secret
+            }
+          }
+        });
+        console.log(`✅ Updated transaction ${transaction.id} to requires_action`);
+      } catch (txError) {
+        console.error("❌ Transaction update error:", txError);
+        return NextResponse.json(
+          { error: "Failed to update transaction" },
+          { status: 500 }
+        );
+      }
+    }
+
     // Handle charge.succeeded event
     if (event.type === "charge.succeeded") {
       const charge = event.data.object as Stripe.Charge;
@@ -68,7 +112,7 @@ export async function POST(request: NextRequest) {
       const transaction = await prisma.transaction.findFirst({
         where: {
           stripeId: typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id,
-          status: "PENDING"
+          status: { in: ["PENDING", "REQUIRES_ACTION"] }
         }
       });
 

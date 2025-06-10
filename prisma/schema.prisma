@@ -32,6 +32,7 @@ model Transaction {
   type      TransactionType
   status    TransactionStatus @default(PENDING)
   stripeId  String?
+  metadata  Json?           @default("{}")
   createdAt DateTime        @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -86,4 +87,5 @@ enum TransactionStatus {
   COMPLETED
   FAILED
   CANCELLED
+  REQUIRES_ACTION
 }
