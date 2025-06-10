@@ -10,11 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { multiplier } = await request.json();
-
-    if (!multiplier || multiplier <= 0) {
-      return NextResponse.json({ error: "Invalid multiplier" }, { status: 400 });
-    }
+    const { multiplier, isCrashed } = await request.json();
 
     // Get user
     const user = await prisma.user.findUnique({
@@ -26,99 +22,85 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    console.log("🔍 Looking for active game session for user:", user.id);
+    console.log("🔍 Looking for latest game session for user:", user.id);
 
-    // First, let's check all conditions separately
-    const sessions = await prisma.gameSession.findMany({
-      where: { 
-        userId: user.id,
-        gameType: 'aviator'
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    console.log("📊 Found", sessions.length, "total sessions for user");
-    
-    if (sessions.length > 0) {
-      const latestSession = sessions[0];
-      console.log("🔍 Latest session details:", {
-        id: latestSession.id,
-        userId: latestSession.userId,
-        betAmount: latestSession.betAmount,
-        cashoutAt: latestSession.cashoutAt,
-        crashed: latestSession.crashed,
-        gameType: latestSession.gameType,
-        createdAt: latestSession.createdAt
-      });
-    }
-
-    // Now find the active session with all conditions
+    // Find the latest game session for this user
     const gameSession = await prisma.gameSession.findFirst({
       where: { 
         userId: user.id,
-        cashoutAt: null,
-        crashed: false,
         gameType: 'aviator'
       },
       orderBy: { createdAt: 'desc' },
     });
 
     if (!gameSession) {
-      console.log("❌ No active game session found for user:", user.id);
-      
-      // Check if there are any game sessions at all
-      const allSessions = await prisma.gameSession.findMany({
-        where: { 
-          userId: user.id,
-          gameType: 'aviator'
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      });
-      
-      if (allSessions.length > 0) {
-        const session = allSessions[0];
-        console.log("ℹ️ Found existing game session:", {
-          id: session.id,
-          cashoutAt: session.cashoutAt,
-          crashed: session.crashed,
-          createdAt: session.createdAt,
-          gameType: session.gameType
-        });
-      } else {
-        console.log("ℹ️ No game sessions found at all for user:", user.id);
-      }
-      
-      return NextResponse.json({ error: "No active game session found" }, { status: 404 });
+      console.log("❌ No game session found for user:", user.id);
+      return NextResponse.json({ error: "No game session found" }, { status: 404 });
     }
 
-    console.log("✅ Found active game session:", {
+    console.log("✅ Found game session:", {
       id: gameSession.id,
       betAmount: gameSession.betAmount,
-      createdAt: gameSession.createdAt,
-      gameType: gameSession.gameType
+      cashoutAt: gameSession.cashoutAt,
+      crashed: gameSession.crashed,
+      createdAt: gameSession.createdAt
     });
+
+    // If session is already completed (crashed or cashed out), return error
+    if (gameSession.cashoutAt !== null || gameSession.crashed) {
+      console.log("❌ Game session already completed:", {
+        cashoutAt: gameSession.cashoutAt,
+        crashed: gameSession.crashed
+      });
+      return NextResponse.json({ error: "Game session already completed" }, { status: 400 });
+    }
+
+    // Handle crash
+    if (isCrashed) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Mark session as crashed
+          await tx.gameSession.update({
+            where: { id: gameSession.id },
+            data: {
+              crashed: true,
+              winAmount: 0
+            },
+          });
+
+          // Create loss transaction
+          await tx.transaction.create({
+            data: {
+              userId: user.id,
+              amount: -gameSession.betAmount,
+              type: 'LOSS',
+              status: 'COMPLETED',
+            },
+          });
+        });
+
+        console.log("✅ Marked game session as crashed:", gameSession.id);
+        return NextResponse.json({ 
+          success: true,
+          crashed: true,
+          winAmount: 0
+        });
+      } catch (txError) {
+        console.error("❌ Transaction error during crash:", txError);
+        return NextResponse.json({ error: "Failed to process crash" }, { status: 500 });
+      }
+    }
+
+    // Handle cash out
+    if (!multiplier || multiplier <= 0) {
+      return NextResponse.json({ error: "Invalid multiplier" }, { status: 400 });
+    }
 
     const winAmount = gameSession.betAmount * multiplier;
 
-    // Update game session and user balance
     try {
       await prisma.$transaction(async (tx) => {
-        // First verify the session is still active
-        const currentSession = await tx.gameSession.findUnique({
-          where: { id: gameSession.id }
-        });
-
-        if (!currentSession || currentSession.cashoutAt !== null || currentSession.crashed) {
-          console.log("❌ Game session is no longer active:", {
-            id: gameSession.id,
-            cashoutAt: currentSession?.cashoutAt,
-            crashed: currentSession?.crashed,
-            gameType: currentSession?.gameType
-          });
-          throw new Error("Game session is no longer active");
-        }
-
+        // Update game session
         await tx.gameSession.update({
           where: { id: gameSession.id },
           data: {
@@ -127,11 +109,13 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        // Update user balance
         await tx.user.update({
           where: { id: user.id },
           data: { balance: { increment: winAmount } },
         });
 
+        // Create win transaction
         await tx.transaction.create({
           data: {
             userId: user.id,

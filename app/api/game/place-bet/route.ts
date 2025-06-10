@@ -40,6 +40,8 @@ export async function POST(request: NextRequest) {
       where: {
         userId: user.id,
         cashoutAt: null,
+        crashed: false,
+        gameType: 'aviator'
       },
     });
 
@@ -77,6 +79,9 @@ export async function POST(request: NextRequest) {
             userId: user.id,
             betAmount: amount,
             gameType: 'aviator',
+            crashed: false,
+            cashoutAt: null,
+            winAmount: null
           },
         });
         console.log("✅ Created game session:", gameSession.id);
