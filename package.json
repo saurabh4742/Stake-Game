@@ -15,7 +15,7 @@
   "dependencies": {
     "@clerk/nextjs": "^4.29.1",
     "@hookform/resolvers": "^3.9.0",
-    "@next/swc-wasm-nodejs": "13.5.1",
+    "@next/swc-wasm-nodejs": "14.2.25",
     "@prisma/client": "^5.7.1",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
@@ -53,8 +53,8 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
-    "eslint": "8.49.0",
-    "eslint-config-next": "13.5.1",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "14.2.25",
     "framer-motion": "^10.16.16",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.446.0",
@@ -79,6 +79,6 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/socket.io-client": "^3.0.0"
+    "@types/socket.io-client": "^4.7.4"
   }
 }
