@@ -10,7 +10,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { multiplier, isCrashed } = await request.json();
+    const { multiplier, sessionId } = await request.json();
+
+    if (!multiplier || multiplier <= 0) {
+      return NextResponse.json({ error: "Invalid multiplier" }, { status: 400 });
+    }
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "Session ID is required" }, { status: 400 });
+    }
 
     // Get user
     const user = await prisma.user.findUnique({
@@ -22,19 +30,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    console.log("🔍 Looking for latest game session for user:", user.id);
+    console.log("🔍 Looking for game session with sessionId:", sessionId);
 
-    // Find the latest game session for this user
+    // Find the game session for this user and session ID
     const gameSession = await prisma.gameSession.findFirst({
       where: { 
         userId: user.id,
+        sessionId: sessionId,
         gameType: 'aviator'
       },
-      orderBy: { createdAt: 'desc' },
     });
 
     if (!gameSession) {
-      console.log("❌ No game session found for user:", user.id);
+      console.log("❌ No game session found for sessionId:", sessionId);
       return NextResponse.json({ error: "No game session found" }, { status: 404 });
     }
 
@@ -55,47 +63,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Game session already completed" }, { status: 400 });
     }
 
-    // Handle crash
-    if (isCrashed) {
-      try {
-        await prisma.$transaction(async (tx) => {
-          // Mark session as crashed
-          await tx.gameSession.update({
-            where: { id: gameSession.id },
-            data: {
-              crashed: true,
-              winAmount: 0
-            },
-          });
-
-          // Create loss transaction
-          await tx.transaction.create({
-            data: {
-              userId: user.id,
-              amount: -gameSession.betAmount,
-              type: 'LOSS',
-              status: 'COMPLETED',
-            },
-          });
-        });
-
-        console.log("✅ Marked game session as crashed:", gameSession.id);
-        return NextResponse.json({ 
-          success: true,
-          crashed: true,
-          winAmount: 0
-        });
-      } catch (txError) {
-        console.error("❌ Transaction error during crash:", txError);
-        return NextResponse.json({ error: "Failed to process crash" }, { status: 500 });
-      }
-    }
-
-    // Handle cash out
-    if (!multiplier || multiplier <= 0) {
-      return NextResponse.json({ error: "Invalid multiplier" }, { status: 400 });
-    }
-
     const winAmount = gameSession.betAmount * multiplier;
 
     try {
@@ -105,7 +72,8 @@ export async function POST(request: NextRequest) {
           where: { id: gameSession.id },
           data: {
             cashoutAt: multiplier,
-            winAmount,
+            winAmount: winAmount,
+            crashed: false
           },
         });
 
@@ -126,15 +94,20 @@ export async function POST(request: NextRequest) {
         });
       });
 
-      console.log("✅ Successfully processed cash-out for session:", gameSession.id);
-      return NextResponse.json({ 
-        success: true, 
+      console.log("✅ Successfully processed cash out:", {
+        gameSessionId: gameSession.id,
         winAmount,
-        multiplier 
+        multiplier
+      });
+
+      return NextResponse.json({ 
+        success: true,
+        winAmount,
+        multiplier
       });
     } catch (txError) {
-      console.error("❌ Transaction error during cash-out:", txError);
-      return NextResponse.json({ error: "Failed to process cash-out" }, { status: 500 });
+      console.error("❌ Transaction error during cash out:", txError);
+      return NextResponse.json({ error: "Failed to process cash out" }, { status: 500 });
     }
   } catch (error) {
     console.error("❌ Cash out error:", error);

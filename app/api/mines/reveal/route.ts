@@ -49,14 +49,28 @@ export async function POST(request: NextRequest) {
 
     if (isMine) {
       // Hit a mine - game over
-      await prisma.minesGame.update({
-        where: { id: minesGame.id },
-        data: {
-          gameEnded: true,
-          hitMine: true,
-          revealedTiles: newRevealedTiles,
-          tilesRevealed: newTilesRevealed,
-        },
+      await prisma.$transaction(async (tx) => {
+        // Update mines game
+        await tx.minesGame.update({
+          where: { id: minesGame.id },
+          data: {
+            gameEnded: true,
+            hitMine: true,
+            revealedTiles: newRevealedTiles,
+            tilesRevealed: newTilesRevealed,
+            winAmount: 0
+          },
+        });
+
+        // Create loss transaction
+        await tx.transaction.create({
+          data: {
+            userId: user.id,
+            amount: -minesGame.betAmount,
+            type: 'LOSS',
+            status: 'COMPLETED',
+          },
+        });
       });
 
       return NextResponse.json({ 

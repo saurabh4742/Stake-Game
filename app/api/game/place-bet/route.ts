@@ -10,10 +10,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { amount } = await request.json();
+    const { amount, sessionId } = await request.json();
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: "Invalid bet amount" }, { status: 400 });
+    }
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "Session ID is required" }, { status: 400 });
     }
 
     console.log("🔍 Looking for user with clerkId:", userId);
@@ -81,7 +85,8 @@ export async function POST(request: NextRequest) {
             gameType: 'aviator',
             crashed: false,
             cashoutAt: null,
-            winAmount: null
+            winAmount: null,
+            sessionId: sessionId
           },
         });
         console.log("✅ Created game session:", gameSession.id);

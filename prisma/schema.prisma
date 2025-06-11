@@ -49,10 +49,12 @@ model GameSession {
   crashed    Boolean  @default(false)
   cashoutAt  Float?
   gameType   String   @default("aviator")
+  sessionId  String
   createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, sessionId])
   @@map("game_sessions")
 }
 

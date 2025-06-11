@@ -29,6 +29,7 @@ interface GameState {
   multiplier: number;
   crashedAt?: number;
   timeLeft?: number;
+  sessionId: string;
 }
 
 export default function GamePage() {
@@ -37,6 +38,7 @@ export default function GamePage() {
   const [gameState, setGameState] = useState<GameState>({
     phase: 'waiting',
     multiplier: 1.0,
+    sessionId: ''
   });
   const [players, setPlayers] = useState<Player[]>([]);
   const [betAmount, setBetAmount] = useState<string>("10");
@@ -155,14 +157,20 @@ export default function GamePage() {
       setPlayers(updatedPlayers);
     });
 
-    socketInstance.on('playerCashedOut', (player: Player) => {
-      playSound('cashout');
-      toast.success(`${player.name} cashed out at ${player.cashoutAt?.toFixed(2)}x for ₹${player.winAmount?.toFixed(2)}`);
+    socketInstance.on('playerCashedOut', (data: Player & { sessionId: string }) => {
+      if (data.sessionId === gameState.sessionId) {
+        playSound('cashout');
+        toast.success(`${data.name} cashed out at ${data.cashoutAt?.toFixed(2)}x for ₹${data.winAmount?.toFixed(2)}`);
+      }
     });
 
-    socketInstance.on('gameCrashed', (multiplier: number) => {
-      toast.error(`Game crashed at ${multiplier.toFixed(2)}x!`);
-      setHasBet(false);
+    socketInstance.on('gameCrashed', (data: { multiplier: number, sessionId: string }) => {
+      if (data.sessionId === gameState.sessionId) {
+        toast.error(`Game crashed at ${data.multiplier.toFixed(2)}x!`);
+        setHasBet(false);
+        // Update balance after crash
+        fetchBalance();
+      }
     });
 
     fetchBalance();
@@ -199,11 +207,14 @@ export default function GamePage() {
       const response = await fetch('/api/game/place-bet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({ 
+          amount,
+          sessionId: gameState.sessionId 
+        }),
       });
 
       if (response.ok) {
-        socket.emit('placeBet', { amount });
+        socket.emit('placeBet', { amount, sessionId: gameState.sessionId });
         setHasBet(true);
         setBalance(prev => prev - amount);
         toast.success(`Bet placed: ₹${amount}`);
@@ -223,11 +234,17 @@ export default function GamePage() {
       const response = await fetch('/api/game/cash-out', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ multiplier: gameState.multiplier }),
+        body: JSON.stringify({ 
+          multiplier: gameState.multiplier,
+          sessionId: gameState.sessionId 
+        }),
       });
 
       if (response.ok) {
-        socket.emit('cashOut', { multiplier: gameState.multiplier });
+        socket.emit('cashOut', { 
+          multiplier: gameState.multiplier,
+          sessionId: gameState.sessionId 
+        });
         setHasBet(false);
         const winAmount = parseFloat(betAmount) * gameState.multiplier;
         setBalance(prev => prev + winAmount);
